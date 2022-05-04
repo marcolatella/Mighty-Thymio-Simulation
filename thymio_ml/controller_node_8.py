@@ -13,9 +13,9 @@ from nav_msgs.msg import Odometry
 
 import sys
 
-class ControllerNode(Node):
+class ControllerNode8(Node):
     def __init__(self):
-        super().__init__('controller_node')
+        super().__init__('controller_node_8')
         # Create attributes to store odometry pose and velocity
         self.odom_pose = None
         self.odom_velocity = None
@@ -78,23 +78,13 @@ class ControllerNode(Node):
         self.angle_direction = -self.angle_direction
         
     def update_callback(self):
-        self.get_logger().info(f"Ciao a tutti")
         # Let's just set some hard-coded velocities in this example
         self.call_counter += 1
-        # angular = (2*pi)/T
-        # linerar = angular*r
         
         radius = 0.3
         thymio_vel = 0.2
         T = (2*math.pi*radius)/thymio_vel
 
-                
-        #t = Time()
-        #sec, nsec = t.seconds_nanoseconds()
-        self.get_logger().info(f"Call Conter: {self.call_counter}")
-        
-
-        s_final = round(2*math.pi*radius, 2)
         angular_vel = (2*math.pi)/T
 
         if self.call_counter > 950:
@@ -105,10 +95,6 @@ class ControllerNode(Node):
         cmd_vel.linear.x  = angular_vel * self.radius # [m/s]
         cmd_vel.angular.z = self.const * angular_vel # [rad/s]
 
-        #self.current_s = round(self.current_s + 0.003, 3) % s_final
-        #self.get_logger().info(f"space: {self.current_s}")
-
-        # Publish the command
         self.vel_publisher.publish(cmd_vel)
 
 
@@ -117,7 +103,7 @@ def main():
     rclpy.init(args=sys.argv)
     
     # Create an instance of your node class
-    node = ControllerNode()
+    node = ControllerNode8()
     node.start()
     # Keep processings events until someone manually shuts down the node
     try:

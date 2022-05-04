@@ -9,6 +9,7 @@ from sensor_msgs.msg import Range
 
 from math import sqrt, sin, cos, atan2, pi
 from enum import Enum
+from rclpy.task import Future
 
 
 class ThymioState(Enum):
@@ -21,7 +22,7 @@ class ThymioState(Enum):
 import sys
 
 class ControllerNode(Node):
-    def __init__(self, threshhold = 0.09):
+    def __init__(self, threshhold = 0.08):
         super().__init__('controller_node')
         
         self.odom_pose = None
@@ -38,6 +39,9 @@ class ControllerNode(Node):
         self.current_state = ThymioState.MOVING
         self.goal_yaw = None
         self.rotation_tolerance = 0.05
+
+        self.starting_pose = None
+        self.odom_tolerance = 0.1
 
         self.prox_center = None
         self.prox_center_left = None
@@ -82,6 +86,9 @@ class ControllerNode(Node):
     def start(self):
         # Create and immediately start a timer that will regularly publish commands
         self.timer = self.create_timer(1/60, self.update_callback)
+        self.done_future = Future()
+        
+        return self.done_future
     
     def stop(self):
         # Set all velocities to zero
@@ -122,7 +129,40 @@ class ControllerNode(Node):
     def prox_condition(self, range):
         return range >= 0 and range < self.threshhold
 
-    def rotate(self):
+    def wall_detected(self):
+        cmd_vel = Twist() 
+        cmd_vel.linear.x  = 0.0 # [m/s]
+        cmd_vel.angular.z = 0.0 # [rad/s]
+        self.stopped = True
+        self.current_state = ThymioState.STOP
+        self.get_logger().info(f"Wall Detected! Entered state: STOP")
+        return cmd_vel
+
+
+    def moving_forward(self):
+        cmd_vel = Twist() 
+        cmd_vel.linear.x  = 0.2 # [m/s]
+        cmd_vel.angular.z = 0.0 # [rad/s]
+        return cmd_vel
+
+    def set_perpendicular(self, center_left_r, center_right_r):
+        cmd_vel = Twist()
+        cmd_vel.linear.x = 0.0
+        cond = abs(center_left_r - center_right_r) <= self.sens_tolerance
+        val = abs(center_left_r - center_right_r)
+        if cond:
+            cmd_vel.angular.z = 0.0
+            self.current_state = ThymioState.PERPENDICULAR
+            self.get_logger().info(f"Entered state: PERPENDICULAR")
+            self.get_logger().info("Start rotating...")
+        elif center_left_r > center_right_r:
+            cmd_vel.angular.z = -val * 6
+        else:
+            cmd_vel.angular.z = val * 6
+        return cmd_vel
+
+
+    def set_perpendicular_inv(self):
         cmd_vel = Twist()
         cmd_vel.linear.x  = 0.0
 
@@ -137,82 +177,71 @@ class ControllerNode(Node):
         sens_diff = abs(rr_range - rl_range)
         if sens_diff <= self.sens_tolerance:
             cmd_vel.angular.z = 0.0
+            cmd_vel.linear.x  = 0.2 # [m/s] 
             self.current_state = ThymioState.FORWARD
+            self.starting_pose = self.pose3d_to_2d(self.odom_pose)
             self.get_logger().info("Rotation ended")
             self.get_logger().info(f"Entered state: FORWARD")
         elif rr_range > rl_range:
             cmd_vel.angular.z = -sens_diff * 6
         else:
-            cmd_vel.angular.z = sens_diff * 6
+            cmd_vel.angular.z = sens_diff * 6   
 
-    def moving_state(self):
-        cmd_vel = Twist() 
-        cmd_vel.linear.x  = 0.2 # [m/s]
-        cmd_vel.angular.z = 0.0 # [rad/s]
-
-    def wall_detected(self):
-        #self.stop()
-        cmd_vel = Twist() 
-        cmd_vel.linear.x  = 0.0 # [m/s]
-        cmd_vel.angular.z = 0.0 # [rad/s]
-        self.stopped = True
-        self.current_state = ThymioState.STOP
-        self.get_logger().info(f"Wall Detected! Entered state: STOP")
+        return cmd_vel
 
 
-        
-    def update_callback(self):
-        # Let's just set some hard-coded velocities in this example
-        #self.get_logger().info('okay, we are inside the callback, lets try to check at sensors')
-        #self.get_logger().info(f'center proximity sensor {self.prox_center}')
+    def step_away(self):
+        cmd_vel = Twist()
+        cmd_vel.angular.z = 0.0
+        cmd_vel.linear.x  = 0.2 # [m/s] 
+        pose2d = self.pose3d_to_2d(self.odom_pose)
+        if self.euclidean_distance(pose2d, self.starting_pose) >= 2.0:    
+            cmd_vel.linear.x  = 0.0 # [m/s]
+            # cambiamento di stato come detto da Marco
+            # chiusura del codice
+            self.done_future.set_result(True)
+            self.destroy_timer(self.timer) 
+        return cmd_vel
+
+    
+    def euclidean_distance(self, goal_pose, current_pose):
+        return sqrt(pow((goal_pose[0] - current_pose[0]), 2) +
+                    pow((goal_pose[1] - current_pose[1]), 2))
+
+
+    def init_sensors(self):
         if self.prox_center:
-            #A = self.prox_center.range
-            B = self.prox_center_left.range
-            C = self.prox_center_right.range
-            #D = self.prox_left.range
-            #E = self.prox_right.range
-        
+            center_left_r = self.prox_center_left.range
+            center_right_r = self.prox_center_right.range
         else:
-            #A, B, C, D, E = 0.2, 0.2, 0.2, 0.2, 0.2
-            B, C = 0.2, 0.2
+            center_left_r, center_right_r = 0.2, 0.2
+        if center_left_r == -1.0:
+            center_left_r = 0.2
+        if center_right_r == -1.0:
+            center_right_r = 0.2
 
-        if B == -1.0:
-            B = 0.2
-        if C == -1.0:
-            C = 0.2
-        
+        return center_left_r, center_right_r
+ 
 
-        if self.current_state == ThymioState.MOVING and (self.prox_condition(B) or self.prox_condition(C)):
-            self.wall_detected()
+    def update_callback(self):
+
+        center_left_r, center_right_r = self.init_sensors()
+
+        if self.current_state == ThymioState.MOVING and (self.prox_condition(center_left_r) or self.prox_condition(center_right_r)):
+            cmd_vel = self.wall_detected()
         elif self.current_state == ThymioState.MOVING:
-            self.moving_state()
+            cmd_vel = self.moving_forward()
         if self.current_state == ThymioState.STOP:
-            cmd_vel = Twist()
-            cmd_vel.linear.x = 0.0
-            cond = abs(B - C) <= self.sens_tolerance
-            val = abs(B - C)
-            if cond:
-                cmd_vel.angular.z = 0.0
-                self.current_state = ThymioState.PERPENDICULAR
-                self.get_logger().info(f"Entered state: PERPENDICULAR")
-                self.get_logger().info("Start rotating...")
-            elif B > C:
-                cmd_vel.angular.z = -val * 6
-            else:
-                cmd_vel.angular.z = val * 6
-        
+            cmd_vel = self.set_perpendicular(center_left_r, center_right_r)
         if self.current_state == ThymioState.PERPENDICULAR:
-            self.rotate()
-
+            cmd_vel = self.set_perpendicular_inv()
         if self.current_state == ThymioState.FORWARD:
-            cmd_vel = Twist()
-            cmd_vel.linear.x  = 0.0
-            cmd_vel.angular.z = 0.0
-            
+            cmd_vel = self.step_away()
 
         # Publish the command
         self.vel_publisher.publish(cmd_vel)
 
+    
 
 
 def main():
@@ -221,16 +250,17 @@ def main():
     
     # Create an instance of your node class
     node = ControllerNode()
-    node.start()
+    done = node.start()
     
     # Keep processings events until someone manually shuts down the node
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+   # try:
+   #     rclpy.spin(node)
+   # except KeyboardInterrupt:
+   #     pass
     
     # Ensure the Thymio is stopped before exiting
-    node.stop()
+    #node.stop()
+    rclpy.spin_until_future_complete(node, done)
 
 
 if __name__ == '__main__':

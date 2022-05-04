@@ -1,7 +1,8 @@
 from setuptools import setup
 from glob import glob
 
-package_name = 'thymio_ld'
+
+package_name = 'thymio_ml'
 
 setup(
     name=package_name,
@@ -23,7 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'controller_node = thymio_ld.controller_node:main'
+            'controller_node = thymio_ml.controller_node:main',
+            'controller_node_8 = thymio_ml.controller_node_8:main'
         ],
     },
 )
