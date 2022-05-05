@@ -25,7 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'controller_node = thymio_ml.controller_node:main',
-            'controller_node_8 = thymio_ml.controller_node_8:main'
+            'controller_node_8 = thymio_ml.controller_node_8:main',
+            'bonus_node = thymio_ml.bonus_node:main'
         ],
     },
 )
