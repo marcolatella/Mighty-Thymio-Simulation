@@ -11,6 +11,7 @@ from math import sqrt, sin, cos, atan2, pi
 from enum import Enum
 from rclpy.task import Future
 
+import random
 
 class ThymioState(Enum):
     MOVING = 1
@@ -34,6 +35,7 @@ class ControllerNode(Node):
 
         self.current_state = ThymioState.MOVING
         self.rotation_tolerance = 0.05
+        self.const = 1
 
         self.starting_pose = None
         self.odom_tolerance = 0.1
@@ -129,63 +131,91 @@ class ControllerNode(Node):
     def prox_condition(self, range):
         return range >= 0 and range < self.threshhold
 
-        
-    def update_callback(self):
-        # Let's just set some hard-coded velocities in this example
-        #self.get_logger().info('okay, we are inside the callback, lets try to check at sensors')
-        #self.get_logger().info(f'center proximity sensor {self.prox_center}')
+    def init_sensors(self):
         if self.prox_center:
-            A = self.prox_center.range
-            B = self.prox_center_left.range
-            C = self.prox_center_right.range
-            D = self.prox_left.range
-            E = self.prox_right.range
+            center_r = self.prox_center.range
+            center_l_r = self.prox_center_left.range
+            center_r_r = self.prox_center_right.range
+            left_r = self.prox_left.range
+            right_r = self.prox_right.range
         
         else:
-            A, B, C, D, E = 0.2, 0.2, 0.2, 0.2, 0.2
+            center_r, center_l_r, center_r_r, left_r, right_r = 0.2, 0.2, 0.2, 0.2, 0.2
 
-        if A == -1.0:
-            A = 0.2 
-        if B == -1.0:
-            B = 0.2
-        if C == -1.0:
-            C = 0.2
-        if D == -1.0:
-            D = 0.2
-        if E == -1.0:
-            E = 0.2
+        if center_r == -1.0:
+            center_r = 0.2 
+        if center_l_r == -1.0:
+            center_l_r = 0.2
+        if center_r_r == -1.0:
+            center_r_r = 0.2
+        if left_r == -1.0:
+            left_r = 0.2
+        if right_r == -1.0:
+            right_r = 0.2
+
+        sens = {
+            'center_r': center_r,
+            'center_l_r': center_l_r,
+            'center_r_r': center_r_r,
+            'left_r': left_r,
+            'right_r': right_r
+        }
         
-        if self.current_state == ThymioState.MOVING and (self.prox_condition(A) or self.prox_condition(B) or self.prox_condition(C) or self.prox_condition(D) or self.prox_condition(E)):
-            cmd_vel = Twist() 
-            cmd_vel.linear.x  = 0.0 # [m/s]
-            cmd_vel.angular.z = 0.0 # [rad/s]
-            self.current_state = ThymioState.ROTATING
-            self.get_logger().info(f"Wall Detected! Entered state: ROTATING")
+        return sens
 
+    def sensors_not_triggered(self, sens):
+        for key, val in sens.items():
+            if val != 0.2:
+                return False
+        return True
+
+    def sensors_triggered(self, sens):
+        for key, val in sens.items():
+            if self.prox_condition(val):
+                return True
+        return False
+
+    def obstacle_detected(self):
+        cmd_vel = Twist() 
+        cmd_vel.linear.x  = 0.0 # [m/s]
+        cmd_vel.angular.z = 0.0 # [rad/s]
+        self.current_state = ThymioState.ROTATING
+        self.const = 1 if random.randint(-1000, 1000) >= 0 else -1
+        self.get_logger().info(f"Obstacle Detected! Entered state: ROTATING")
+        self.get_logger().info(f"Start rotating")
+        return cmd_vel
+
+    def moving(self):
+        cmd_vel = Twist() 
+        cmd_vel.linear.x  = 0.2 # [m/s]
+        cmd_vel.angular.z = 0.0 # [rad/s]
+        return cmd_vel
+
+    def rotate(self):
+        cmd_vel = Twist()
+        cmd_vel.linear.x = 0.0
+        cmd_vel.angular.z = self.const * 0.5
+        return cmd_vel
+
+    def update_callback(self):
+
+        sens = self.init_sensors()
+        
+        if self.current_state == ThymioState.MOVING and self.sensors_triggered(sens):
+            cmd_vel = self.obstacle_detected()
         elif self.current_state == ThymioState.MOVING:
-            cmd_vel = Twist() 
-            cmd_vel.linear.x  = 0.2 # [m/s]
-            cmd_vel.angular.z = 0.0 # [rad/s]
-
-        if self.current_state == ThymioState.ROTATING and A == 0.2 and B == 0.2 and C == 0.2 and D == 0.2 and E == 0.2:
-            cmd_vel = Twist()
-            cmd_vel.linear.x = 0.2
-            cmd_vel.angular.z = 0.0
-            self.current_state == ThymioState.MOVING
-        
+            cmd_vel = self.moving()
+        if self.current_state == ThymioState.ROTATING and self.sensors_not_triggered(sens):
+            self.get_logger().info(f"Obstacle no more detected!")
+            cmd_vel = self.moving()
+            self.current_state = ThymioState.MOVING
+            self.get_logger().info(f"Entered state: MOVING")
         elif self.current_state == ThymioState.ROTATING:
-            cmd_vel = Twist()
-            cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = 0.1
+            cmd_vel = self.rotate()
 
         # Publish the command
         self.vel_publisher.publish(cmd_vel)
         
-
-    def euclidean_distance(self, goal_pose, current_pose):
-        return sqrt(pow((goal_pose[0] - current_pose[0]), 2) +
-                    pow((goal_pose[1] - current_pose[1]), 2))
-
 
 def main():
     # Initialize the ROS client library
