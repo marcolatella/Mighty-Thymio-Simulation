@@ -78,7 +78,6 @@ class ControllerNode8(Node):
         self.angle_direction = -self.angle_direction
         
     def update_callback(self):
-        # Let's just set some hard-coded velocities in this example
         self.call_counter += 1
         
         radius = 0.3
@@ -87,7 +86,7 @@ class ControllerNode8(Node):
 
         angular_vel = (2*math.pi)/T
 
-        if self.call_counter > 950:
+        if self.call_counter > 965:
             self.const = -self.const
             self.call_counter = 0
 
