@@ -3,21 +3,26 @@ from re import T
 import rclpy
 from rclpy.node import Node
 import tf_transformations
+from cv_bridge import CvBridge, CvBridgeError
 
 from geometry_msgs.msg import Twist, Pose
 from sensor_msgs.msg import Imu
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Range
+from sensor_msgs.msg import Range, Image
 
 from math import sqrt, sin, cos, atan2, pi
 from enum import Enum
 from rclpy.task import Future
-import sys
+import sys, os, cv2
+
 
 class ThymioState(Enum):
     INIT = 0
-    ON_LINE = 1
+    DATA_GATHERING = 1
     OFF_LINE = 3
+
+HOMEPATH = os.path.expanduser("~")
+DATASET_PATH = HOMEPATH+'/dataset'
 
 class ControllerNode(Node):
     def __init__(self):
@@ -25,15 +30,17 @@ class ControllerNode(Node):
                 
         self.vel_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
         self.odom_subscriber = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
-        self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
-        self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)
+        self.camera = self.create_subscription(Image, 'camera', self.img_callback, 10)
 
         self.current_state = ThymioState.INIT
 
         self.gl_sens = None
         self.gr_sens = None
+        self.image_counter = 0
+        self.bridge = CvBridge()
 
-
+        #self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
+        #self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
         #self.prox_center_sub = self.create_subscription(Range, 'proximity/center', self.proxCenter_cb, 10)
         #self.prox_center_left_sub = self.create_subscription(Range, 'proximity/center_left', self.proxCenterLeft_cb, 10)
         #self.prox_center_right_sub = self.create_subscription(Range, 'proximity/center_right', self.proxCenterRight_cb, 10)
@@ -61,11 +68,30 @@ class ControllerNode(Node):
         
         pose2d = self.pose3d_to_2d(self.odom_pose)
 
+    def img_callback(self, msg):
+        image = self.image_processing(msg)
+        self.save_image(image)
+
+
     def ground_l_cb(self, msg):
         self.gl_sens = msg
     
     def ground_r_cb(self, msg):
         self.gr_sens = msg
+
+    def image_processing(self, msg):
+        self.image_counter += 1 
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
+        except CvBridgeError as e:
+            print(e)
+
+        resized_img = cv2.resize(cv_image, None, fx=0.5, fy=0.5)
+        return resized_img
+    
+    def save_image(self, image):
+        status = cv2.imwrite(f'{DATASET_PATH}/img_{self.image_counter}.png' ,image)
+
 
     def pose3d_to_2d(self, pose3):
         quaternion = (
@@ -91,14 +117,15 @@ class ControllerNode(Node):
         cmd_vel.angular.z = 0.0
         return cmd_vel
 
+    def log_images(self):
+        if self.image_counter % 1000 == 0:
+            self.get_logger().info(f"Images collected: {self.image_counter}")
+
     def update_callback(self):
         if self.current_state == ThymioState.INIT:
             cmd_vel = self.init_state()
         
-        
-        #self.get_logger().info(f"sensor gl: {self.gl_sens.range}, sensor gr: {self.gr_sens.range}")
-        
-        
+        self.log_images()
 
         # Publish the command
         self.vel_publisher.publish(cmd_vel)
