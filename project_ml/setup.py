@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'create_dataset_node = project_ml.create_dataset_node:main',
+            'main_node = project_ml.main_node:main'
         ],
     },
 )
