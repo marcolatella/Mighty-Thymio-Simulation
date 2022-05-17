@@ -23,7 +23,7 @@ def generate_launch_description():
         # Start a ROS node, equivalent to ros2 run <package_name> <executable_name>
         Node(
             package='project_ml',
-            executable='create_dataset_node',
+            executable='main_node',
             
             # Launch controller_node in the namespace defined by the thymio_name
             # launch argument (default: /thymio0). Combined with the use of
