@@ -119,20 +119,22 @@ class ControllerNode(Node):
 
     def update_init_state(self):
         if self.current_state == ThymioState.INIT:
-            if self.gr_sens == 1 and self.gr_sens == 1:
+            if self.gr_sens == 1.0 or self.gr_sens == 1.0:
                 self.get_logger().info(f"Line detected!")
                 self.current_state = ThymioState.FOLLOWING_LINE
-                #self.get_logger().info(f"Entered state {self.current_state}")
+                self.get_logger().info(f"Entered state {self.current_state}")
 
 
     def follow_line(self):
         cmd_vel = Twist()
-        cmd_vel.linear.x = 2.0
         if not self.gl_sens:
-            cmd_vel.angular.z = 1.0
+            cmd_vel.linear.x = 0.0 
+            cmd_vel.angular.z = -3.0
         elif not self.gr_sens:
-            cmd_vel.angular.z = -1.0
+            cmd_vel.linear.x = 0.0
+            cmd_vel.angular.z = 3.0
         else:
+            cmd_vel.linear.x = 2.0
             cmd_vel.angular.z = 0.0
 
         return cmd_vel
@@ -146,9 +148,8 @@ class ControllerNode(Node):
         if self.current_state == ThymioState.FOLLOWING_LINE:
             cmd_vel = self.follow_line()
 
-            
         
-        self.get_logger().info(f"Left: {self.gl_sens}, Right: {self.gr_sens}")
+        #self.get_logger().info(f"Left: {self.gl_sens}, Right: {self.gr_sens}")
 
         # Publish the command
         self.vel_publisher.publish(cmd_vel)
