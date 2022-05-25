@@ -39,8 +39,8 @@ class ControllerNode(Node):
         self.image_counter = 0
         self.bridge = CvBridge()
 
-        #self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
-        #self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
+        self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
+        self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
         #self.prox_center_sub = self.create_subscription(Range, 'proximity/center', self.proxCenter_cb, 10)
         #self.prox_center_left_sub = self.create_subscription(Range, 'proximity/center_left', self.proxCenterLeft_cb, 10)
         #self.prox_center_right_sub = self.create_subscription(Range, 'proximity/center_right', self.proxCenterRight_cb, 10)
@@ -74,10 +74,10 @@ class ControllerNode(Node):
 
 
     def ground_l_cb(self, msg):
-        self.gl_sens = msg
+        self.gl_sens = msg.range
     
     def ground_r_cb(self, msg):
-        self.gr_sens = msg
+        self.gr_sens = msg.range
 
     def image_processing(self, msg):
         self.image_counter += 1 
@@ -117,13 +117,42 @@ class ControllerNode(Node):
         cmd_vel.angular.z = 0.0
         return cmd_vel
 
+    def update_init_state(self):
+        if self.current_state == ThymioState.INIT:
+            if self.gr_sens == 1.0 or self.gr_sens == 1.0:
+                self.get_logger().info(f"Line detected!")
+                self.current_state = ThymioState.FOLLOWING_LINE
+                self.get_logger().info(f"Entered state {self.current_state}")
+
     def log_images(self):
         if self.image_counter % 1000 == 0:
             self.get_logger().info(f"Images collected: {self.image_counter}")
 
+
+    def follow_line(self):
+        cmd_vel = Twist()
+        if not self.gl_sens:
+            cmd_vel.linear.x = 0.25 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.angular.z = -1.5
+        elif not self.gr_sens:
+            cmd_vel.linear.x = 0.25 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.angular.z = 1.5
+        else:
+            cmd_vel.linear.x = 2.0
+            cmd_vel.angular.z = 0.0
+
+        return cmd_vel
+
     def update_callback(self):
         if self.current_state == ThymioState.INIT:
+            self.update_init_state()
             cmd_vel = self.init_state()
+
+        if self.current_state == ThymioState.FOLLOWING_LINE:
+            cmd_vel = self.follow_line()
+
+        
+        #self.get_logger().info(f"Left: {self.gl_sens}, Right: {self.gr_sens}")
         
         self.log_images()
 
