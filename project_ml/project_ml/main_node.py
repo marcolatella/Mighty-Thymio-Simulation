@@ -128,11 +128,11 @@ class ControllerNode(Node):
     def follow_line(self):
         cmd_vel = Twist()
         if not self.gl_sens:
-            cmd_vel.linear.x = 0.0 
-            cmd_vel.angular.z = -3.0
+            cmd_vel.linear.x = 0.25 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.angular.z = -1.5
         elif not self.gr_sens:
-            cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = 3.0
+            cmd_vel.linear.x = 0.25 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.angular.z = 1.5
         else:
             cmd_vel.linear.x = 2.0
             cmd_vel.angular.z = 0.0
