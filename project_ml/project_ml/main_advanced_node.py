@@ -19,6 +19,7 @@ import sys, os, cv2
 class ThymioState(Enum):
     INIT = 0
     FOLLOWING_LINE = 1
+    FIND_LINE = 2
     ACCURACY_EVAL = 3
     FINDING_OBJ = 4
     DANCING = 5
@@ -49,6 +50,12 @@ class ControllerNode(Node):
         #self.prox_rear_left_sub = self.create_subscription(Range, 'proximity/rear_left', self.prox_rear_l_cb, 10)
         #self.prox_rear_right_sub = self.create_subscription(Range, 'proximity/rear_right', self.prox_rear_r_cb, 10)
 
+        self.angle_threshhold = 1.0
+        self.last_angle = None
+        self.move_counter = 0
+        self.rotate_left = False
+        self.found = False
+
          
     def start(self):
         # Create and immediately start a timer that will regularly publish commands
@@ -68,28 +75,18 @@ class ControllerNode(Node):
         
         pose2d = self.pose3d_to_2d(self.odom_pose)
 
+        self.odom_pose = pose2d
+
     def img_callback(self, msg):
         pass
 
 
     def ground_l_cb(self, msg):
         self.gl_sens = msg.range
+
     
     def ground_r_cb(self, msg):
         self.gr_sens = msg.range
-
-    #def image_processing(self, msg):
-    #    self.image_counter += 1 
-    #    try:
-    #        cv_image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
-    #    except CvBridgeError as e:
-    #        print(e)
-
-    #    resized_img = cv2.resize(cv_image, None, fx=0.5, fy=0.5)
-    #    return resized_img
-    
-    #def save_image(self, image):
-    #    status = cv2.imwrite(f'{DATASET_PATH}/img_{self.image_counter}.png' ,image)
 
 
     def pose3d_to_2d(self, pose3):
@@ -127,6 +124,12 @@ class ControllerNode(Node):
 
     def follow_line(self):
         cmd_vel = Twist()
+        if (not self.gl_sens) and (not self.gr_sens):
+            self.last_angle = self.odom_pose[-1]
+            cmd_vel.linear.x = 0.0
+            cmd_vel.angular.z = 0.0
+            self.current_state = ThymioState.FIND_LINE
+
         if not self.gl_sens:
             cmd_vel.linear.x = 0.25 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
             cmd_vel.angular.z = -1.5
@@ -140,6 +143,59 @@ class ControllerNode(Node):
         return cmd_vel
 
 
+    def diff(self):
+        last_angle = self.last_angle
+        curr_angle = self.odom_pose[-1]
+
+        if last_angle < 0:
+            last_angle = (-last_angle) + 3.14
+        if curr_angle < 0:
+            curr_angle = (-curr_angle) + 3.14
+        
+        return abs(last_angle - curr_angle)
+
+        
+    def find_line(self):
+        cmd_vel = Twist()
+
+        if self.gl_sens or self.gr_sens:
+            self.found = True
+
+        elif  (self.rotate_left or 
+             self.diff()  >= self.angle_threshhold):
+
+            #self.get_logger().info(f"Cant find anything on the right lets check on the left!")
+
+            cmd_vel.linear.x = 0.0
+            cmd_vel.angular.z = 1.0 # qua dobbiamo stare attenti potrebbe missare!
+            self.rotate_left = True
+
+        
+        else: #(not self.gl_sens) and (not self.gr_sens):
+            cmd_vel.linear.x = 0.0
+            cmd_vel.angular.z = -1.5
+        
+        if self.found:
+
+            #self.get_logger().info(f"Okay I found something. I should stay here now till I enter in following line state")
+
+            if self.move_counter < 4: #capire poi come tunare questo valore, voglio farlo muovere un po avanti prima di risistemarlo sulla linea!
+                self.rotate_left = False
+                cmd_vel.linear.x = 1.0
+                cmd_vel.angular.z = 0.0
+                self.move_counter += 1
+
+            else:
+                self.current_state = ThymioState.FOLLOWING_LINE
+                cmd_vel.linear.x = 1.0
+                cmd_vel.angular.z = 0.0
+                self.move_counter = 0
+                self.last_angle = None
+                self.found = False
+            
+        return cmd_vel
+                
+
     def update_callback(self):
         if self.current_state == ThymioState.INIT:
             self.update_init_state()
@@ -147,6 +203,9 @@ class ControllerNode(Node):
 
         if self.current_state == ThymioState.FOLLOWING_LINE:
             cmd_vel = self.follow_line()
+        
+        if self.current_state == ThymioState.FIND_LINE:
+            cmd_vel = self.find_line()
 
         
         #self.get_logger().info(f"Left: {self.gl_sens}, Right: {self.gr_sens}")
