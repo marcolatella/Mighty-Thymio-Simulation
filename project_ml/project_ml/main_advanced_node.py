@@ -1,5 +1,12 @@
 from mimetypes import init
 from re import T
+from matplotlib.pyplot import get
+
+from .model import get_model
+import torch.nn as nn
+import torch
+import torchvision.transforms as transforms
+
 import rclpy
 from rclpy.node import Node
 import tf_transformations
@@ -40,6 +47,10 @@ class ControllerNode(Node):
         self.gl_sens = None
         self.gr_sens = None
 
+        self.model = get_model()
+        self.model.eval()
+        self.soft = nn.Softmax(dim=1)
+
         self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
         self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
         #self.prox_center_sub = self.create_subscription(Range, 'proximity/center', self.proxCenter_cb, 10)
@@ -55,6 +66,8 @@ class ControllerNode(Node):
         self.move_counter = 0
         self.rotate_left = False
         self.found = False
+
+        self.bridge = CvBridge()
 
          
     def start(self):
@@ -78,8 +91,29 @@ class ControllerNode(Node):
         self.odom_pose = pose2d
 
     def img_callback(self, msg):
-        pass
+        image = self.image_processing(msg)
+        out = self.model(image.view(-1, 3, 160, 120))
+        out = self.soft(out)
+        # _, prediction = out.max(dim=1)
+        self.get_logger().info(f"Prediction: {out}")
 
+    
+    def image_processing(self, msg):
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
+        except CvBridgeError as e:
+            print(e)
+
+       #resized_img = cv2.resize(cv_image, None, fx=0.5, fy=0.5)
+        resized_img = cv2.resize(cv_image, (160, 120), interpolation = cv2.INTER_AREA)
+
+        mean = [0.3878, 0.4509, 0.4653]
+        std = [0.2344, 0.2144, 0.2342]
+        transformations = transforms.Compose([transforms.ToTensor(),
+                                          transforms.Normalize(mean, std)])
+        resized_img = transformations(resized_img)
+        
+        return resized_img
 
     def ground_l_cb(self, msg):
         self.gl_sens = msg.range
