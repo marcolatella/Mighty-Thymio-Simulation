@@ -1,5 +1,6 @@
 from mimetypes import init
 from re import T
+import math
 from matplotlib.pyplot import get
 
 from .model import get_model
@@ -95,7 +96,7 @@ class ControllerNode(Node):
         out = self.model(image.view(-1, 3, 160, 120))
         out = self.soft(out)
         # _, prediction = out.max(dim=1)
-        self.get_logger().info(f"Prediction: {out}")
+        #self.get_logger().info(f"Prediction: {out}")
 
     
     def image_processing(self, msg):
@@ -163,15 +164,16 @@ class ControllerNode(Node):
             cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 0.0
             self.current_state = ThymioState.FIND_LINE
+            self.get_logger().info(f"Entered state {self.current_state}")
 
         if not self.gl_sens:
-            cmd_vel.linear.x = 0.25 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
-            cmd_vel.angular.z = -1.5
+            cmd_vel.linear.x = 0.0 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.angular.z = -0.5
         elif not self.gr_sens:
-            cmd_vel.linear.x = 0.25 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
-            cmd_vel.angular.z = 1.5
+            cmd_vel.linear.x = 0.0 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.angular.z = 0.5
         else:
-            cmd_vel.linear.x = 2.0
+            cmd_vel.linear.x = 0.11
             cmd_vel.angular.z = 0.0
 
         return cmd_vel
@@ -182,9 +184,9 @@ class ControllerNode(Node):
         curr_angle = self.odom_pose[-1]
 
         if last_angle < 0:
-            last_angle = (-last_angle) + 3.14
+            last_angle = last_angle + 2*math.pi
         if curr_angle < 0:
-            curr_angle = (-curr_angle) + 3.14
+            curr_angle = curr_angle + 2*math.pi
         
         return abs(last_angle - curr_angle)
 
@@ -197,31 +199,30 @@ class ControllerNode(Node):
 
         elif  (self.rotate_left or 
              self.diff()  >= self.angle_threshhold):
-
+            #left 
             #self.get_logger().info(f"Cant find anything on the right lets check on the left!")
 
             cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = 1.0 # qua dobbiamo stare attenti potrebbe missare!
+            cmd_vel.angular.z = 0.5 # qua dobbiamo stare attenti potrebbe missare!
             self.rotate_left = True
 
         
         else: #(not self.gl_sens) and (not self.gr_sens):
+            # right
             cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = -1.5
+            cmd_vel.angular.z = -0.5
         
         if self.found:
-
             #self.get_logger().info(f"Okay I found something. I should stay here now till I enter in following line state")
-
-            if self.move_counter < 4: #capire poi come tunare questo valore, voglio farlo muovere un po avanti prima di risistemarlo sulla linea!
+            if self.move_counter < 0: #capire poi come tunare questo valore, voglio farlo muovere un po avanti prima di risistemarlo sulla linea!
                 self.rotate_left = False
-                cmd_vel.linear.x = 1.0
+                cmd_vel.linear.x = 0.10
                 cmd_vel.angular.z = 0.0
                 self.move_counter += 1
-
             else:
                 self.current_state = ThymioState.FOLLOWING_LINE
-                cmd_vel.linear.x = 1.0
+                self.get_logger().info(f"Entered state {self.current_state}")
+                cmd_vel.linear.x = 0.10
                 cmd_vel.angular.z = 0.0
                 self.move_counter = 0
                 self.last_angle = None
