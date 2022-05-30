@@ -1,17 +1,22 @@
 import torch
 import torch.nn as nn
 import pickle
-from nnsimple.predictors import Predictor
+
+from .cnn import CNN
+
 
 MODELPATH = "/home/usi/dev_ws/src/project_ml/model/epoch=5-step=2670.ckpt"
 
 
-def load_pkl_ds(path):
-    with open(path, 'rb') as file:
-        data = pickle.load(file)
-    return data
-
-
 def get_model():
-    model = Predictor().load_from_checkpoint(MODELPATH)
+    checkpoint = torch.load(MODELPATH)
+    model_params = checkpoint['hyper_parameters']['model_params']
+    model = CNN(**model_params)
+    model_weights = checkpoint['state_dict']
+
+    for key in list(model_weights):
+        model_weights[key.replace("model.", "")] = model_weights.pop(key)
+
+    model.load_state_dict(model_weights)
     return model
+

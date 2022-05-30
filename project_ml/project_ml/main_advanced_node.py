@@ -73,7 +73,7 @@ class ControllerNode(Node):
          
     def start(self):
         # Create and immediately start a timer that will regularly publish commands
-        self.timer = self.create_timer(1/60, self.update_callback)
+        self.timer = self.create_timer(1/100, self.update_callback)
         self.done_future = Future()
         
         return self.done_future
@@ -86,17 +86,15 @@ class ControllerNode(Node):
     def odom_callback(self, msg):
         self.odom_pose = msg.pose.pose
         self.odom_velocity = msg.twist.twist
+        self.odom_pose = self.pose3d_to_2d(self.odom_pose)
+
         
-        pose2d = self.pose3d_to_2d(self.odom_pose)
-
-        self.odom_pose = pose2d
-
     def img_callback(self, msg):
         image = self.image_processing(msg)
         out = self.model(image.view(-1, 3, 160, 120))
         out = self.soft(out)
-        # _, prediction = out.max(dim=1)
-        #self.get_logger().info(f"Prediction: {out}")
+        _, prediction = out.max(dim=1)
+        self.get_logger().info(f"Prediction: {prediction}")
 
     
     def image_processing(self, msg):
@@ -159,30 +157,25 @@ class ControllerNode(Node):
 
     def follow_line(self):
         cmd_vel = Twist()
+        cmd_vel.linear.x = 0.1 # 0.09
         if (not self.gl_sens) and (not self.gr_sens):
             self.last_angle = self.odom_pose[-1]
-            cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 0.0
             self.current_state = ThymioState.FIND_LINE
             self.get_logger().info(f"Entered state {self.current_state}")
-
         if not self.gl_sens:
-            cmd_vel.linear.x = 0.0 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
-            cmd_vel.angular.z = -0.5
+            cmd_vel.angular.z = -1.0 # -0.9
         elif not self.gr_sens:
-            cmd_vel.linear.x = 0.0 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
-            cmd_vel.angular.z = 0.5
+            cmd_vel.angular.z = 1.0 #0.9
         else:
             cmd_vel.linear.x = 0.11
             cmd_vel.angular.z = 0.0
-
         return cmd_vel
 
 
     def diff(self):
         last_angle = self.last_angle
         curr_angle = self.odom_pose[-1]
-
         if last_angle < 0:
             last_angle = last_angle + 2*math.pi
         if curr_angle < 0:
@@ -193,41 +186,27 @@ class ControllerNode(Node):
         
     def find_line(self):
         cmd_vel = Twist()
-
+        cmd_vel.linear.x = 0.0
         if self.gl_sens or self.gr_sens:
             self.found = True
-
-        elif  (self.rotate_left or 
-             self.diff()  >= self.angle_threshhold):
+        elif (self.rotate_left or self.diff() >= self.angle_threshhold):
             #left 
             #self.get_logger().info(f"Cant find anything on the right lets check on the left!")
-
-            cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 0.5 # qua dobbiamo stare attenti potrebbe missare!
             self.rotate_left = True
-
-        
         else: #(not self.gl_sens) and (not self.gr_sens):
             # right
-            cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = -0.5
-        
+
         if self.found:
-            #self.get_logger().info(f"Okay I found something. I should stay here now till I enter in following line state")
-            if self.move_counter < 0: #capire poi come tunare questo valore, voglio farlo muovere un po avanti prima di risistemarlo sulla linea!
-                self.rotate_left = False
-                cmd_vel.linear.x = 0.10
-                cmd_vel.angular.z = 0.0
-                self.move_counter += 1
-            else:
-                self.current_state = ThymioState.FOLLOWING_LINE
-                self.get_logger().info(f"Entered state {self.current_state}")
-                cmd_vel.linear.x = 0.10
-                cmd_vel.angular.z = 0.0
-                self.move_counter = 0
-                self.last_angle = None
-                self.found = False
-            
+            cmd_vel.linear.x = 0.10
+            cmd_vel.angular.z = 0.0
+            self.move_counter = 0
+            self.last_angle = None
+            self.found = False
+            self.rotate_left = False
+            self.current_state = ThymioState.FOLLOWING_LINE
+            self.get_logger().info(f"Entered state {self.current_state}")
         return cmd_vel
                 
 
