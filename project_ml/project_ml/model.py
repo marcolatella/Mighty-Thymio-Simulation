@@ -5,11 +5,11 @@ import pickle
 from .cnn import CNN
 
 
-MODELPATH = "/home/usi/dev_ws/src/project_ml/model/epoch=5-step=2670.ckpt"
+MODELPATH = "/home/usi/dev_ws/src/project_ml/model/test_21-epoch=16-val_loss=0.0022.ckpt"
 
 
 def get_model():
-    checkpoint = torch.load(MODELPATH)
+    checkpoint = torch.load(MODELPATH, map_location=torch.device('cpu'))
     model_params = checkpoint['hyper_parameters']['model_params']
     model = CNN(**model_params)
     model_weights = checkpoint['state_dict']

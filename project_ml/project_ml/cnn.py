@@ -103,7 +103,7 @@ class CNN(nn.Module):
         self.conv2 = ConvPool(self.hidden_size_conv,
                               2 * self.hidden_size_conv, self.kernel_size, self.kernel_pooling, self.dropout)
 
-        self.fc = MLP(64 * 28 * 38, 512, self.out_size, activation=nn.ReLU(), lazy=False)
+        self.fc = MLP(64 * 28 * 38, self.hidden_size_fc, self.out_size, activation=nn.ReLU(), lazy=False)
 
     def forward(self, x):
         out = self.conv1(x)

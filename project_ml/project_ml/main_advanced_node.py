@@ -29,12 +29,10 @@ class ThymioState(Enum):
     FOLLOWING_LINE = 1
     FIND_LINE = 2
     STOPPED = 3
-    #ACCURACY_EVAL = 3
-    #FINDING_OBJ = 4
-    #DANCING = 5
 
-MIN_ACCURACY = 0.93
-MIN_CONS_PRED = 225
+
+MIN_ACCURACY = 0.94
+MIN_CONS_PRED = 250
 HOMEPATH = os.path.expanduser("~")
 DATASET_PATH = HOMEPATH+'/dataset'
 
@@ -57,15 +55,8 @@ class ControllerNode(Node):
 
         self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
         self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
-        #self.prox_center_sub = self.create_subscription(Range, 'proximity/center', self.proxCenter_cb, 10)
-        #self.prox_center_left_sub = self.create_subscription(Range, 'proximity/center_left', self.proxCenterLeft_cb, 10)
-        #self.prox_center_right_sub = self.create_subscription(Range, 'proximity/center_right', self.proxCenterRight_cb, 10)
-        #self.prox_left_sub = self.create_subscription(Range, 'proximity/left', self.proxLeft_cb, 10)
-        #self.prox_right_sub = self.create_subscription(Range, 'proximity/right', self.proxRight_cb, 10)
-        #self.prox_rear_left_sub = self.create_subscription(Range, 'proximity/rear_left', self.prox_rear_l_cb, 10)
-        #self.prox_rear_right_sub = self.create_subscription(Range, 'proximity/rear_right', self.prox_rear_r_cb, 10)
 
-        self.angle_threshhold = 1.0
+        self.angle_threshhold = 1.8
         self.last_angle = None
         self.move_counter = 0
         self.rotate_left = False
@@ -89,6 +80,7 @@ class ControllerNode(Node):
         cmd_vel = Twist()
         cmd_vel.linear.x = 0.0
         cmd_vel.angular.z = 0.0
+        return cmd_vel
 
     
     def odom_callback(self, msg):
@@ -185,16 +177,16 @@ class ControllerNode(Node):
 
     def follow_line(self):
         cmd_vel = Twist()
-        cmd_vel.linear.x = 0.1 # 0.09
+        cmd_vel.linear.x = 0.09 # 0.09
         if (not self.gl_sens) and (not self.gr_sens):
             self.last_angle = self.odom_pose[-1]
             cmd_vel.angular.z = 0.0
             self.current_state = ThymioState.FIND_LINE
             self.get_logger().info(f"Entered state {self.current_state}")
         if not self.gl_sens:
-            cmd_vel.angular.z = -1.0 # -0.9
+            cmd_vel.angular.z = -0.85 # -0.9
         elif not self.gr_sens:
-            cmd_vel.angular.z = 1.0 #0.9
+            cmd_vel.angular.z = 0.85 #0.9
         else:
             cmd_vel.linear.x = 0.11
             cmd_vel.angular.z = 0.0
@@ -220,11 +212,11 @@ class ControllerNode(Node):
         elif (self.rotate_left or self.diff() >= self.angle_threshhold):
             #left 
             #self.get_logger().info(f"Cant find anything on the right lets check on the left!")
-            cmd_vel.angular.z = 0.5 # qua dobbiamo stare attenti potrebbe missare!
+            cmd_vel.angular.z = 0.25 # qua dobbiamo stare attenti potrebbe missare!
             self.rotate_left = True
         else: #(not self.gl_sens) and (not self.gr_sens):
             # right
-            cmd_vel.angular.z = -0.5
+            cmd_vel.angular.z = -0.25
 
         if self.found:
             cmd_vel.linear.x = 0.10
