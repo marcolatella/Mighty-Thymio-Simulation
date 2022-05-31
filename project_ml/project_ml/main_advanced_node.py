@@ -28,10 +28,13 @@ class ThymioState(Enum):
     INIT = 0
     FOLLOWING_LINE = 1
     FIND_LINE = 2
-    ACCURACY_EVAL = 3
-    FINDING_OBJ = 4
-    DANCING = 5
+    STOPPED = 3
+    #ACCURACY_EVAL = 3
+    #FINDING_OBJ = 4
+    #DANCING = 5
 
+MIN_ACCURACY = 0.93
+MIN_CONS_PRED = 225
 HOMEPATH = os.path.expanduser("~")
 DATASET_PATH = HOMEPATH+'/dataset'
 
@@ -68,6 +71,9 @@ class ControllerNode(Node):
         self.rotate_left = False
         self.found = False
 
+        self.actual_preds = 0
+        self.to_stop = False
+
         self.bridge = CvBridge()
 
          
@@ -81,22 +87,44 @@ class ControllerNode(Node):
     def stop(self):
         # Set all velocities to zero
         cmd_vel = Twist()
-        self.vel_publisher.publish(cmd_vel)
+        cmd_vel.linear.x = 0.0
+        cmd_vel.angular.z = 0.0
+
     
     def odom_callback(self, msg):
         self.odom_pose = msg.pose.pose
         self.odom_velocity = msg.twist.twist
         self.odom_pose = self.pose3d_to_2d(self.odom_pose)
+    
+
+    def get_room(self, val):
+        if val == 0:
+            return 'Corridor'
+        elif val == 1:
+            return 'Office'
+        elif val == 2:
+            return 'Garden'
+        else:
+            return 'Dangerous Room'
 
         
     def img_callback(self, msg):
         image = self.image_processing(msg)
         out = self.model(image.view(-1, 3, 160, 120))
         out = self.soft(out)
-        _, prediction = out.max(dim=1)
-        self.get_logger().info(f"Prediction: {prediction}")
+        value, prediction = out.max(dim=1)
+        if value >= MIN_ACCURACY:
+            self.actual_preds += 1
+            if self.actual_preds >= MIN_CONS_PRED:
+                self.get_logger().info(f"Room detected is {self.get_room(prediction)}")
+                self.actual_preds = 0
+                if prediction == 3:
+                    self.get_logger().info(f"Dangerous room detected! Stopping Thymio...")
+                    self.to_stop = True
+        else:
+            self.actual_preds = 0
+        
 
-    
     def image_processing(self, msg):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
@@ -211,6 +239,10 @@ class ControllerNode(Node):
                 
 
     def update_callback(self):
+        if self.to_stop == True:
+            self.current_state = ThymioState.STOPPED
+            cmd_vel = self.stop()
+
         if self.current_state == ThymioState.INIT:
             self.update_init_state()
             cmd_vel = self.init_state()
