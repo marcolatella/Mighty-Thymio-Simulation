@@ -35,6 +35,7 @@ MIN_ACCURACY = 0.94
 MIN_CONS_PRED = 250
 HOMEPATH = os.path.expanduser("~")
 DATASET_PATH = HOMEPATH+'/dataset'
+INLINE_THRESHOLD = 50
 
 class ControllerNode(Node):
     def __init__(self):
@@ -45,6 +46,7 @@ class ControllerNode(Node):
         self.camera = self.create_subscription(Image, 'camera', self.img_callback, 10)
 
         self.current_state = ThymioState.INIT
+        self.inline_counter = 0
 
         self.gl_sens = None
         self.gr_sens = None
@@ -80,6 +82,8 @@ class ControllerNode(Node):
         cmd_vel = Twist()
         cmd_vel.linear.x = 0.0
         cmd_vel.angular.z = 0.0
+        self.done_future.set_result(True)
+        self.destroy_timer(self.timer)
         return cmd_vel
 
     
@@ -123,7 +127,6 @@ class ControllerNode(Node):
         except CvBridgeError as e:
             print(e)
 
-       #resized_img = cv2.resize(cv_image, None, fx=0.5, fy=0.5)
         resized_img = cv2.resize(cv_image, (160, 120), interpolation = cv2.INTER_AREA)
 
         mean = [0.3878, 0.4509, 0.4653]
@@ -181,14 +184,20 @@ class ControllerNode(Node):
         if (not self.gl_sens) and (not self.gr_sens):
             self.last_angle = self.odom_pose[-1]
             cmd_vel.angular.z = 0.0
+            self.inline_counter = 0
             self.current_state = ThymioState.FIND_LINE
             self.get_logger().info(f"Entered state {self.current_state}")
         if not self.gl_sens:
             cmd_vel.angular.z = -0.85 # -0.9
+            self.inline_counter = 0
         elif not self.gr_sens:
             cmd_vel.angular.z = 0.85 #0.9
+            self.inline_counter = 0
         else:
-            cmd_vel.linear.x = 0.11
+            self.inline_counter += 1
+            cmd_vel.linear.x = 0.08 #0.05 
+            if self.inline_counter > INLINE_THRESHOLD:
+                cmd_vel.linear.x = 0.11
             cmd_vel.angular.z = 0.0
         return cmd_vel
 
@@ -211,8 +220,7 @@ class ControllerNode(Node):
             self.found = True
         elif (self.rotate_left or self.diff() >= self.angle_threshhold):
             #left 
-            #self.get_logger().info(f"Cant find anything on the right lets check on the left!")
-            cmd_vel.angular.z = 0.25 # qua dobbiamo stare attenti potrebbe missare!
+            cmd_vel.angular.z = 0.25
             self.rotate_left = True
         else: #(not self.gl_sens) and (not self.gr_sens):
             # right
@@ -244,9 +252,6 @@ class ControllerNode(Node):
         
         if self.current_state == ThymioState.FIND_LINE:
             cmd_vel = self.find_line()
-
-        
-        #self.get_logger().info(f"Left: {self.gl_sens}, Right: {self.gr_sens}")
 
         # Publish the command
         self.vel_publisher.publish(cmd_vel)
