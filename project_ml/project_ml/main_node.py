@@ -140,15 +140,7 @@ def main():
     # Create an instance of your node class
     node = ControllerNode()
     done = node.start()
-    
-    # Keep processings events until someone manually shuts down the node
-   # try:
-   #     rclpy.spin(node)
-   # except KeyboardInterrupt:
-   #     pass
-    
-    # Ensure the Thymio is stopped before exiting
-    #node.stop()
+
     rclpy.spin_until_future_complete(node, done)
 
 

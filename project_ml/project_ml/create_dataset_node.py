@@ -17,6 +17,7 @@ import sys, os, cv2
 
 
 class ThymioState(Enum):
+#FSM STATES
     INIT = 0
     DATA_GATHERING = 1
     FIND_LINE = 2
@@ -24,6 +25,7 @@ class ThymioState(Enum):
 
 HOMEPATH = os.path.expanduser("~")
 DATASET_PATH = HOMEPATH+'/train_set_reverse' #'/media/usi/4E01-8004/test_set'
+INLINE_THRESHOLD = 50
 
 class ControllerNode(Node):
     def __init__(self):
@@ -43,7 +45,7 @@ class ControllerNode(Node):
         self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
         self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
 
-        self.angle_threshhold = 1.0
+        self.angle_threshhold = 1.8
         self.last_angle = None
         self.move_counter = 0
         self.rotate_left = False
@@ -132,77 +134,65 @@ class ControllerNode(Node):
 
 
     def follow_line(self):
+    #line following with linear velocity amortization
         cmd_vel = Twist()
+        cmd_vel.linear.x = 0.09 # 0.09
         if (not self.gl_sens) and (not self.gr_sens):
             self.last_angle = self.odom_pose[-1]
-            cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 0.0
+            self.inline_counter = 0
             self.current_state = ThymioState.FIND_LINE
-
+            self.get_logger().info(f"Entered state {self.current_state}")
         if not self.gl_sens:
-            cmd_vel.linear.x = 0.0 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
-            cmd_vel.angular.z = -1.5
+            cmd_vel.angular.z = -0.85 # -0.9
+            self.inline_counter = 0
         elif not self.gr_sens:
-            cmd_vel.linear.x = 0.0 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
-            cmd_vel.angular.z = 1.5
+            cmd_vel.angular.z = 0.85 #0.9
+            self.inline_counter = 0
         else:
-            cmd_vel.linear.x = 2.0
+            self.inline_counter += 1
+            cmd_vel.linear.x = 0.08 #0.05 
+            if self.inline_counter > INLINE_THRESHOLD:
+                cmd_vel.linear.x = 0.11
             cmd_vel.angular.z = 0.0
-
         return cmd_vel
     
 
     def diff(self):
         last_angle = self.last_angle
         curr_angle = self.odom_pose[-1]
-
         if last_angle < 0:
-            last_angle = (-last_angle) + 3.14
+            last_angle = last_angle + 2*math.pi
         if curr_angle < 0:
-            curr_angle = (-curr_angle) + 3.14
+            curr_angle = curr_angle + 2*math.pi
         
         return abs(last_angle - curr_angle)
     
 
     def find_line(self):
-
+    #Thymio rotates right (till a set threshold). If it finds no line,
+    #it rotates left till he finds line back
         cmd_vel = Twist()
-
+        cmd_vel.linear.x = 0.0
         if self.gl_sens or self.gr_sens:
             self.found = True
-
-        elif  (self.rotate_left or 
-             self.diff()  >= self.angle_threshhold):
-
-            #self.get_logger().info(f"Cant find anything on the right lets check on the left!")
-
-            cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = 1.0 # qua dobbiamo stare attenti potrebbe missare!
+        elif (self.rotate_left or self.diff() >= self.angle_threshhold):
+            #left 
+            cmd_vel.angular.z = 0.25
             self.rotate_left = True
+        else: #(not self.gl_sens) and (not self.gr_sens):
+            # right
+            cmd_vel.angular.z = -0.25
 
-        
-        else:
-            cmd_vel.linear.x = 0.0
-            cmd_vel.angular.z = -1.5
-        
         if self.found:
-
-            #self.get_logger().info(f"Okay I found something. I should stay here now till I enter in following line state")
-
-            if self.move_counter < 4:
-                self.rotate_left = False
-                cmd_vel.linear.x = 1.0
-                cmd_vel.angular.z = 0.0
-                self.move_counter += 1
-
-            else:
-                self.current_state = ThymioState.DATA_GATHERING
-                cmd_vel.linear.x = 1.0
-                cmd_vel.angular.z = 0.0
-                self.move_counter = 0
-                self.last_angle = None
-                self.found = False
-            
+            cmd_vel.linear.x = 0.10
+            cmd_vel.angular.z = 0.0
+            self.move_counter = 0
+            self.last_angle = None
+            self.found = False
+            self.rotate_left = False
+            self.current_state = ThymioState.DATA_GATHERING
+            self.get_logger().info(f"Entered state {self.current_state}")
         return cmd_vel
 
 
@@ -216,8 +206,6 @@ class ControllerNode(Node):
         
         if self.current_state == ThymioState.FIND_LINE:
             cmd_vel = self.find_line()
-  
-        #self.get_logger().info(f"Left: {self.gl_sens}, Right: {self.gr_sens}")
         
         self.log_images()
 
@@ -234,15 +222,7 @@ def main():
     # Create an instance of your node class
     node = ControllerNode()
     done = node.start()
-    
-    # Keep processings events until someone manually shuts down the node
-   # try:
-   #     rclpy.spin(node)
-   # except KeyboardInterrupt:
-   #     pass
-    
-    # Ensure the Thymio is stopped before exiting
-    #node.stop()
+
     rclpy.spin_until_future_complete(node, done)
 
 

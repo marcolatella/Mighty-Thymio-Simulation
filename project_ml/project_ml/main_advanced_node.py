@@ -25,6 +25,7 @@ import sys, os, cv2
 
 
 class ThymioState(Enum):
+#FSM STATES
     INIT = 0
     FOLLOWING_LINE = 1
     FIND_LINE = 2
@@ -33,8 +34,6 @@ class ThymioState(Enum):
 
 MIN_ACCURACY = 0.94
 MIN_CONS_PRED = 250
-HOMEPATH = os.path.expanduser("~")
-DATASET_PATH = HOMEPATH+'/dataset'
 INLINE_THRESHOLD = 50
 
 class ControllerNode(Node):
@@ -105,6 +104,7 @@ class ControllerNode(Node):
 
         
     def img_callback(self, msg):
+    #image retrieval and thresholds handling to detect new rooms
         image = self.image_processing(msg)
         out = self.model(image.view(-1, 3, 160, 120))
         out = self.soft(out)
@@ -179,6 +179,7 @@ class ControllerNode(Node):
 
 
     def follow_line(self):
+    #line following with linear velocity amortization
         cmd_vel = Twist()
         cmd_vel.linear.x = 0.09 # 0.09
         if (not self.gl_sens) and (not self.gr_sens):
@@ -214,6 +215,8 @@ class ControllerNode(Node):
 
         
     def find_line(self):
+    #Thymio rotates right (till a set threshold). If it finds no line,
+    #it rotates left till he finds line back
         cmd_vel = Twist()
         cmd_vel.linear.x = 0.0
         if self.gl_sens or self.gr_sens:
@@ -266,15 +269,7 @@ def main():
     # Create an instance of your node class
     node = ControllerNode()
     done = node.start()
-    
-    # Keep processings events until someone manually shuts down the node
-   # try:
-   #     rclpy.spin(node)
-   # except KeyboardInterrupt:
-   #     pass
-    
-    # Ensure the Thymio is stopped before exiting
-    #node.stop()
+
     rclpy.spin_until_future_complete(node, done)
 
 
