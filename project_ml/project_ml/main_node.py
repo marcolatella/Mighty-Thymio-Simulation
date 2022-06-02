@@ -19,9 +19,6 @@ import sys, os, cv2
 class ThymioState(Enum):
     INIT = 0
     FOLLOWING_LINE = 1
-    ACCURACY_EVAL = 3
-    FINDING_OBJ = 4
-    DANCING = 5
 
 HOMEPATH = os.path.expanduser("~")
 DATASET_PATH = HOMEPATH+'/dataset'
@@ -40,14 +37,7 @@ class ControllerNode(Node):
         self.gr_sens = None
 
         self.ground_l = self.create_subscription(Range, 'ground/left', self.ground_l_cb, 10)
-        self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)  
-        #self.prox_center_sub = self.create_subscription(Range, 'proximity/center', self.proxCenter_cb, 10)
-        #self.prox_center_left_sub = self.create_subscription(Range, 'proximity/center_left', self.proxCenterLeft_cb, 10)
-        #self.prox_center_right_sub = self.create_subscription(Range, 'proximity/center_right', self.proxCenterRight_cb, 10)
-        #self.prox_left_sub = self.create_subscription(Range, 'proximity/left', self.proxLeft_cb, 10)
-        #self.prox_right_sub = self.create_subscription(Range, 'proximity/right', self.proxRight_cb, 10)
-        #self.prox_rear_left_sub = self.create_subscription(Range, 'proximity/rear_left', self.prox_rear_l_cb, 10)
-        #self.prox_rear_right_sub = self.create_subscription(Range, 'proximity/rear_right', self.prox_rear_r_cb, 10)
+        self.ground_r = self.create_subscription(Range, 'ground/right', self.ground_r_cb, 10)
 
          
     def start(self):
@@ -77,20 +67,6 @@ class ControllerNode(Node):
     
     def ground_r_cb(self, msg):
         self.gr_sens = msg.range
-
-    #def image_processing(self, msg):
-    #    self.image_counter += 1 
-    #    try:
-    #        cv_image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
-    #    except CvBridgeError as e:
-    #        print(e)
-
-    #    resized_img = cv2.resize(cv_image, None, fx=0.5, fy=0.5)
-    #    return resized_img
-    
-    #def save_image(self, image):
-    #    status = cv2.imwrite(f'{DATASET_PATH}/img_{self.image_counter}.png' ,image)
-
 
     def pose3d_to_2d(self, pose3):
         quaternion = (
@@ -128,10 +104,10 @@ class ControllerNode(Node):
     def follow_line(self):
         cmd_vel = Twist()
         if not self.gl_sens:
-            cmd_vel.linear.x = 0.25 #erano a zero provate: [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = -1.5
         elif not self.gr_sens:
-            cmd_vel.linear.x = 0.25 #erano a zero [0.1, 0.2, 0.5(fail), 0.4(fail), 0.3(fail), 0.25]
+            cmd_vel.linear.x = 0.0
             cmd_vel.angular.z = 1.5
         else:
             cmd_vel.linear.x = 2.0
